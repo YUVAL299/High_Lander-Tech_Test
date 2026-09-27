@@ -1,5 +1,6 @@
 # IDE
 .idea/
+.vscode/
 
 # Python
 __pycache__/
@@ -9,3 +10,12 @@ __pycache__/
 venv/
 env/
 .pytest_cache/
+.ruff_cache/
+
+# Node
+node_modules/
+dist/
+
+# Local config / data
+.env
+osrm-data/

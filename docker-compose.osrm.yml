@@ -1,0 +1,52 @@
+# Fully offline routing: run OSRM locally instead of using the public server.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.osrm.yml up --build
+#
+# The first start downloads an OpenStreetMap extract (default: Israel &
+# Palestine, ~100 MB) and builds a walking graph from it, which takes a few
+# minutes and ~2-4 GB of RAM. Later starts reuse it from the `osrm-data`
+# volume. Routes only work inside the chosen region; pick yours at
+# https://download.geofabrik.de and set OSRM_PBF_URL in .env.
+
+x-osrm-image: &osrm-image osrm/osrm-backend:v5.25.0
+
+services:
+  osrm-download:
+    image: curlimages/curl:8.10.1
+    user: "0:0"
+    entrypoint: ["/bin/sh", "/scripts/download.sh"]
+    environment:
+      OSRM_PBF_URL: ${OSRM_PBF_URL:-https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf}
+    volumes:
+      - osrm-data:/data
+      - ./osrm:/scripts:ro
+
+  osrm-prepare:
+    image: *osrm-image
+    entrypoint: ["/bin/sh", "/scripts/prepare.sh"]
+    depends_on:
+      osrm-download:
+        condition: service_completed_successfully
+    volumes:
+      - osrm-data:/data
+      - ./osrm:/scripts:ro
+
+  osrm:
+    image: *osrm-image
+    command: ["osrm-routed", "--algorithm", "mld", "/data/region.osrm"]
+    depends_on:
+      osrm-prepare:
+        condition: service_completed_successfully
+    volumes:
+      - osrm-data:/data:ro
+    restart: unless-stopped
+
+  backend:
+    environment:
+      HL_OSRM_URL: http://osrm:5000
+    depends_on:
+      osrm:
+        condition: service_started
+
+volumes:
+  osrm-data:
