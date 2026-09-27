@@ -1,6 +1,8 @@
-# High Lander – Navigation Game
+# High Lander Tech Test
 
-A real-time, map-based navigation game. When you start, a goal flag appears
+A real-time, map-based navigation game.
+
+When you start, a goal flag appears
 somewhere 200–800 m away. The shortest **walking** route to it is drawn on an
 OpenStreetMap map, and you race to reach it. Walk off the path and the route
 is recalculated. Get within 20 m of the flag and you win.

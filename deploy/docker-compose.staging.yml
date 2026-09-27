@@ -5,11 +5,11 @@
 
 services:
   backend:
-    image: ghcr.io/${IMAGE_OWNER:?set IMAGE_OWNER}/highlander-backend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:?set IMAGE_OWNER}/high-lander-tech-test-backend:${IMAGE_TAG:-latest}
     pull_policy: always
     environment:
       HL_LOG_LEVEL: INFO
 
   frontend:
-    image: ghcr.io/${IMAGE_OWNER:?set IMAGE_OWNER}/highlander-frontend:${IMAGE_TAG:-latest}
+    image: ghcr.io/${IMAGE_OWNER:?set IMAGE_OWNER}/high-lander-tech-test-frontend:${IMAGE_TAG:-latest}
     pull_policy: always

@@ -37,7 +37,7 @@ export class Hud {
     this.el = h(
       "aside",
       { class: "card hud" },
-      h("div", { class: "hud-title" }, h("strong", {}, "High Lander"), this.fields.connection),
+      h("div", { class: "hud-title" }, h("strong", {}, "High Lander Tech Test"), this.fields.connection),
       row("To goal (direct)", this.fields.distance),
       row("Route remaining", this.fields.remaining),
       row("Walking ETA", this.fields.eta),

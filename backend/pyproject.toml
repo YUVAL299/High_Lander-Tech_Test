@@ -1,7 +1,7 @@
 [project]
-name = "highlander-backend"
+name = "high-lander-tech-test-backend"
 version = "0.1.0"
-description = "Game server for the High Lander navigation game"
+description = "Game server for High Lander Tech Test, a navigation game"
 requires-python = ">=3.11"
 dependencies = [
     "fastapi>=0.115",

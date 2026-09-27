@@ -40,7 +40,7 @@ export class StartScreen {
       h(
         "div",
         { class: "card start-card" },
-        h("h1", {}, "High Lander"),
+        h("h1", {}, "High Lander Tech Test"),
         h(
           "p",
           { class: "muted" },

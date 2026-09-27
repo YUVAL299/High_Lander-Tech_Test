@@ -13,7 +13,7 @@ from app.routing.base import RoutingError
 
 log = logging.getLogger(__name__)
 
-USER_AGENT = "HighLander-NavigationGame/0.1 (+https://github.com/YUVAL299/High_Lander-Tech_Test)"
+USER_AGENT = "HighLanderTechTest/0.1 (+https://github.com/YUVAL299/High_Lander-Tech_Test)"
 
 
 def _coord(p: LatLng) -> str:

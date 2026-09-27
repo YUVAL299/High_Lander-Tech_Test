@@ -9,7 +9,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="HL_", env_file=".env", extra="ignore")
 
-    app_name: str = "High Lander"
+    app_name: str = "High Lander Tech Test"
     log_level: str = "INFO"
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
 

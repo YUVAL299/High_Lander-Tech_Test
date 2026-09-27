@@ -14,7 +14,7 @@ import { Hud } from "./ui/hud";
 import { showResult } from "./ui/resultBanner";
 import { type StartChoice, StartScreen } from "./ui/startScreen";
 
-const STORAGE_KEY = "highlander.session";
+const STORAGE_KEY = "high-lander-tech-test.session";
 const DEFAULT_START: LatLngPos = { lat: 32.0853, lng: 34.7818 }; // Tel Aviv
 const WANDER_OFF_M = 60;
 

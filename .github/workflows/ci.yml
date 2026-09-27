@@ -96,8 +96,8 @@ jobs:
           target: runtime
           push: true
           tags: |
-            ghcr.io/${{ env.OWNER }}/highlander-backend:${{ github.sha }}
-            ghcr.io/${{ env.OWNER }}/highlander-backend:latest
+            ghcr.io/${{ env.OWNER }}/high-lander-tech-test-backend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/high-lander-tech-test-backend:latest
           cache-from: type=gha,scope=backend
           cache-to: type=gha,mode=max,scope=backend
       - uses: docker/build-push-action@v6
@@ -105,8 +105,8 @@ jobs:
           context: frontend
           push: true
           tags: |
-            ghcr.io/${{ env.OWNER }}/highlander-frontend:${{ github.sha }}
-            ghcr.io/${{ env.OWNER }}/highlander-frontend:latest
+            ghcr.io/${{ env.OWNER }}/high-lander-tech-test-frontend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/high-lander-tech-test-frontend:latest
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,mode=max,scope=frontend
 

@@ -23,8 +23,8 @@ logs:          ## Follow logs
 test: test-backend test-frontend  ## Run all unit & integration tests (in Docker, no local toolchain needed)
 
 test-backend:
-	docker build -q --target test -t highlander-backend-test backend
-	docker run --rm highlander-backend-test
+	docker build -q --target test -t high-lander-tech-test-backend-test backend
+	docker run --rm high-lander-tech-test-backend-test
 
 test-frontend:
 	docker run --rm -v "$(CURDIR)/frontend:/app" -w /app node:22-alpine \
@@ -32,7 +32,7 @@ test-frontend:
 
 e2e:           ## Start the stack with a stub router and play a scripted game against it
 	$(COMPOSE_E2E) up -d --build --wait
-	docker run --rm --network highlander_default -v "$(CURDIR)/e2e:/e2e:ro" python:3.12-slim \
+	docker run --rm --network high-lander-tech-test_default -v "$(CURDIR)/e2e:/e2e:ro" python:3.12-slim \
 		sh -c "pip install -q -r /e2e/requirements.txt && python /e2e/smoke_test.py http://frontend:8080"
 	$(COMPOSE_E2E) down
 

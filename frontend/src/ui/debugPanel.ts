@@ -10,7 +10,7 @@ export interface DebugActions {
   onJumpNearGoal: () => void;
 }
 
-const COLLAPSED_KEY = "highlander.debug.collapsed";
+const COLLAPSED_KEY = "high-lander-tech-test.debug.collapsed";
 
 /** Test & debug controls, so the game can be evaluated from a desk. */
 export class DebugPanel {
