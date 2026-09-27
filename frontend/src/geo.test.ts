@@ -1,5 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { destinationPoint, formatDistance, formatDuration, haversineM } from "./geo";
+import {
+  bearingDeg,
+  destinationPoint,
+  formatDistance,
+  formatDuration,
+  haversineM,
+  remainingPath,
+} from "./geo";
 
 const TLV = { lat: 32.0853, lng: 34.7818 };
 
@@ -20,5 +27,23 @@ describe("geo", () => {
     expect(formatDistance(1534)).toBe("1.53 km");
     expect(formatDuration(45)).toBe("45s");
     expect(formatDuration(125)).toBe("2m 05s");
+  });
+});
+
+describe("bearing and remaining path", () => {
+  it("bearingDeg points the right way", () => {
+    expect(bearingDeg(TLV, destinationPoint(TLV, 10, 100))).toBeCloseTo(10, 1);
+    expect(bearingDeg(TLV, destinationPoint(TLV, 90, 100))).toBeCloseTo(90, 1);
+    expect(bearingDeg(TLV, destinationPoint(TLV, 225, 100))).toBeCloseTo(225, 1);
+  });
+
+  it("remainingPath skips the vertices already passed", () => {
+    const a = TLV;
+    const b = destinationPoint(a, 90, 100);
+    const c = destinationPoint(b, 0, 100);
+    const d = destinationPoint(c, 90, 100);
+    const justPastB = destinationPoint(b, 0, 20);
+    expect(remainingPath([a, b, c, d], justPastB)).toEqual([c, d]);
+    expect(remainingPath([a, b, c, d], a)).toEqual([b, c, d]);
   });
 });

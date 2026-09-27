@@ -354,3 +354,79 @@ input[type="text"] {
     font-size: 13px;
   }
 }
+
+/* ---- debug panel -------------------------------------------------------------- */
+
+.debug {
+  position: absolute;
+  left: 12px;
+  bottom: 24px;
+  z-index: 1000;
+  width: 300px;
+  max-width: calc(100vw - 24px);
+  padding: 10px 14px;
+}
+
+.debug summary {
+  cursor: pointer;
+  font-weight: 600;
+  user-select: none;
+}
+
+.debug-body {
+  margin-top: 10px;
+}
+
+.debug .row {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 6px;
+}
+
+.debug .label {
+  color: var(--muted);
+}
+
+.debug input[type="range"] {
+  width: 100%;
+}
+
+.segmented {
+  display: flex;
+  gap: 6px;
+}
+
+.segmented .btn {
+  flex: 1;
+}
+
+.btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-fg);
+}
+
+.debug-actions {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.sim-controls.disabled {
+  opacity: 0.45;
+}
+
+kbd {
+  font: 11px ui-monospace, monospace;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+}
+
+@media (max-width: 600px) {
+  .debug {
+    right: 12px;
+    width: auto;
+  }
+}

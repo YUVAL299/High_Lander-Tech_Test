@@ -39,3 +39,33 @@ export function formatDuration(s: number): string {
   const secs = Math.round(s % 60);
   return mins > 0 ? `${mins}m ${secs.toString().padStart(2, "0")}s` : `${secs}s`;
 }
+
+/** Initial compass bearing from `a` to `b`, in degrees (0 = north). */
+export function bearingDeg(a: LatLngPos, b: LatLngPos): number {
+  const phi1 = rad(a.lat);
+  const phi2 = rad(b.lat);
+  const dLmb = rad(b.lng - a.lng);
+  const y = Math.sin(dLmb) * Math.cos(phi2);
+  const x = Math.cos(phi1) * Math.sin(phi2) - Math.sin(phi1) * Math.cos(phi2) * Math.cos(dLmb);
+  return (deg(Math.atan2(y, x)) + 360) % 360;
+}
+
+/** The part of `points` still ahead of `pos` (from the nearest vertex on). */
+export function remainingPath(points: LatLngPos[], pos: LatLngPos): LatLngPos[] {
+  if (points.length === 0) return [];
+  let nearest = 0;
+  let best = Infinity;
+  points.forEach((p, i) => {
+    const d = haversineM(p, pos);
+    if (d < best) {
+      best = d;
+      nearest = i;
+    }
+  });
+  // If we're already past the nearest vertex, don't walk back to it.
+  const ahead = points.slice(nearest);
+  if (ahead.length > 1 && haversineM(pos, ahead[1]) <= haversineM(ahead[0], ahead[1])) {
+    return ahead.slice(1);
+  }
+  return ahead;
+}
