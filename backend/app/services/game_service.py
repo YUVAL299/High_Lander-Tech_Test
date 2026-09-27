@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
 
-from app.domain.geo import LatLng, haversine_m, polyline_length_m, trim_polyline_from
+from app.domain.geo import LatLng, haversine_m
 from app.domain.models import (
     GameSession,
     Player,
@@ -143,7 +143,7 @@ class GameService:
                         "player_id": player_id,
                         "position": Position.from_domain(position).model_dump(),
                         "distance_to_goal_m": round(session.distance_to_goal_m(player_id), 1),
-                        "remaining_route_m": round(self._remaining_route_m(player), 1),
+                        "remaining_route_m": round(session.remaining_route_m(player_id), 1),
                     },
                 )
             )
@@ -239,13 +239,6 @@ class GameService:
             route=route,
             last_seen_at=self._clock(),
         )
-
-    @staticmethod
-    def _remaining_route_m(player: Player) -> float:
-        route = player.route
-        if route is None or route.source is RouteSource.STRAIGHT_LINE:
-            return route.distance_m if route else 0.0
-        return polyline_length_m(trim_polyline_from(player.position, route.points))
 
     def _view(self, session: GameSession) -> SessionView:
         return SessionView(

@@ -61,3 +61,19 @@ def test_version_increments_on_mutation():
 def test_distance_to_goal():
     s = _session("alice")
     assert round(s.distance_to_goal_m("alice")) == 400
+
+
+def test_remaining_route_follows_the_route_polyline():
+    from app.domain.models import Route, RouteSource
+
+    s = _session("alice")
+    corner = destination_point(START, 90, 300)
+    end = destination_point(corner, 0, 200)
+    s.players["alice"].route = Route([START, corner, end], 500, 360, RouteSource.OSRM)
+    s.move_player("alice", destination_point(START, 90, 100))
+    assert round(s.remaining_route_m("alice")) == 400
+
+
+def test_remaining_route_without_real_route_is_direct_distance():
+    s = _session("alice")
+    assert s.remaining_route_m("alice") == s.distance_to_goal_m("alice")

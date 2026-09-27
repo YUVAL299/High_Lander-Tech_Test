@@ -62,6 +62,7 @@ class PlayerView(BaseModel):
     position: Position
     connected: bool
     distance_to_goal_m: float
+    remaining_route_m: float
     reroute_count: int
     reached_goal_at: datetime | None
     route: RouteView | None
@@ -92,6 +93,7 @@ def player_view(session: GameSession, player: Player, connected: bool) -> Player
         position=Position.from_domain(player.position),
         connected=connected,
         distance_to_goal_m=round(session.distance_to_goal_m(player.id), 1),
+        remaining_route_m=round(session.remaining_route_m(player.id), 1),
         reroute_count=player.reroute_count,
         reached_goal_at=player.reached_goal_at,
         route=RouteView.from_domain(player.route) if player.route else None,

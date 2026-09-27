@@ -12,7 +12,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from app.domain.geo import LatLng, haversine_m
+from app.domain.geo import LatLng, haversine_m, polyline_length_m, trim_polyline_from
 
 
 def utcnow() -> datetime:
@@ -76,6 +76,14 @@ class GameSession:
 
     def distance_to_goal_m(self, player_id: str) -> float:
         return haversine_m(self.players[player_id].position, self.goal)
+
+    def remaining_route_m(self, player_id: str) -> float:
+        """How far the player still has to walk along their route."""
+        player = self.players[player_id]
+        route = player.route
+        if route is None or route.source is RouteSource.STRAIGHT_LINE:
+            return haversine_m(player.position, self.goal)
+        return polyline_length_m(trim_polyline_from(player.position, route.points))
 
     def move_player(self, player_id: str, position: LatLng, now: datetime | None = None) -> bool:
         """Record a new position. Returns True if this move wins the game.
