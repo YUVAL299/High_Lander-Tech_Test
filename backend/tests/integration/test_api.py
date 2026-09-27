@@ -43,8 +43,6 @@ def test_rejects_odd_player_names(client):
 
 def test_unknown_session_is_404(client):
     assert client.get("/api/sessions/missing").status_code == 404
-    resp = client.post("/api/sessions/missing/players", json={"position": POS})
-    assert resp.status_code == 404
 
 
 def test_public_config(client):
@@ -57,10 +55,9 @@ def test_websocket_full_game(client):
     goal = body["session"]["goal"]
 
     with client.websocket_connect(f"/ws/sessions/{sid}?player_id={pid}") as ws:
-        assert ws.receive_json()["type"] == "player.presence"
         state = ws.receive_json()
         assert state["type"] == "session.state"
-        assert state["payload"]["players"][0]["connected"] is True
+        assert state["payload"]["players"][0]["id"] == pid
 
         ws.send_json({"type": "position.update", "payload": {"lat": 32.0, "lng": 34.7}})
         assert ws.receive_json()["type"] == "player.moved"
@@ -80,8 +77,7 @@ def test_websocket_reports_bad_messages_without_disconnecting(client):
     body = _create(client)
     sid, pid = body["session"]["id"], body["player_id"]
     with client.websocket_connect(f"/ws/sessions/{sid}?player_id={pid}") as ws:
-        ws.receive_json()
-        ws.receive_json()
+        assert ws.receive_json()["type"] == "session.state"
         ws.send_text("not json")
         assert ws.receive_json()["type"] == "error"
         ws.send_json({"type": "position.update", "payload": {"lat": 200, "lng": 0}})
@@ -96,26 +92,3 @@ def test_websocket_rejects_unknown_player(client):
         with pytest.raises(WebSocketDisconnect) as exc:
             ws.receive_json()
         assert exc.value.code == 4404
-
-
-def test_two_players_see_each_other(client):
-    body = _create(client)
-    sid, alice = body["session"]["id"], body["player_id"]
-    bob = client.post(f"/api/sessions/{sid}/players", json={"position": POS, "name": "Bob"})
-    bob_id = bob.json()["player_id"]
-
-    with (
-        client.websocket_connect(f"/ws/sessions/{sid}?player_id={alice}") as a,
-        client.websocket_connect(f"/ws/sessions/{sid}?player_id={bob_id}") as b,
-    ):
-        a.receive_json(), a.receive_json()  # own presence + state
-        assert a.receive_json() == {
-            "type": "player.presence",
-            "payload": {"player_id": bob_id, "connected": True},
-        }
-        b.receive_json(), b.receive_json()
-
-        b.send_json({"type": "position.update", "payload": POS})
-        moved = a.receive_json()
-        assert moved["type"] == "player.moved"
-        assert moved["payload"]["player_id"] == bob_id

@@ -30,7 +30,7 @@ test-frontend:
 	docker run --rm -v "$(CURDIR)/frontend:/app" -w /app node:22-alpine \
 		sh -c "npm ci --no-audit --no-fund && npm run typecheck && npm test"
 
-e2e:           ## Start the stack with a stub router and play a scripted race against it
+e2e:           ## Start the stack with a stub router and play a scripted game against it
 	$(COMPOSE_E2E) up -d --build --wait
 	docker run --rm --network highlander_default -v "$(CURDIR)/e2e:/e2e:ro" python:3.12-slim \
 		sh -c "pip install -q -r /e2e/requirements.txt && python /e2e/smoke_test.py http://frontend:8080"

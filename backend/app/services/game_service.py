@@ -1,10 +1,13 @@
 """Orchestrates a game: sessions, players, routing and broadcasting events.
 
+The game is single-player today, but a session already holds a *set* of
+players and every event is broadcast to the whole session, so multiplayer
+(see docs/ARCHITECTURE.md) only needs a "join" command on top of this.
+
 Concurrency model: every read-modify-write on a session happens under the
-store's per-session lock, so concurrent position updates from several players
-are applied one at a time and the first to reach the goal wins deterministically.
-Slow routing calls are made *outside* the lock so one player's reroute never
-blocks another player's movement.
+store's per-session lock, so concurrent updates are applied one at a time and
+the first player to reach the goal wins deterministically. Slow routing calls
+are made *outside* the lock so a reroute never blocks position updates.
 """
 
 from __future__ import annotations
@@ -25,9 +28,9 @@ from app.domain.models import (
 )
 from app.domain.rules import ReroutePolicy, RerouteReason
 from app.schemas import (
-    JoinedSession,
     Position,
     RouteView,
+    SessionCreated,
     SessionView,
     message,
     player_view,
@@ -45,10 +48,6 @@ class SessionNotFound(Exception):
 
 
 class PlayerNotFound(Exception):
-    pass
-
-
-class SessionFinished(Exception):
     pass
 
 
@@ -79,7 +78,7 @@ class GameService:
 
     # ---- commands ---------------------------------------------------------------
 
-    async def create_session(self, position: LatLng, name: str | None) -> JoinedSession:
+    async def create_session(self, position: LatLng, name: str | None) -> SessionCreated:
         goal = await self._goals.generate(position)
         session = GameSession(id=new_id(), goal=goal, reach_radius_m=self._reach_radius_m)
         player = await self._new_player(session, position, name)
@@ -89,24 +88,7 @@ class GameService:
             "session created",
             extra={"session_id": session.id, "goal_distance_m": haversine_m(position, goal)},
         )
-        return JoinedSession(player_id=player.id, session=self._view(session))
-
-    async def join_session(
-        self, session_id: str, position: LatLng, name: str | None
-    ) -> JoinedSession:
-        session = await self._require_session(session_id)
-        # Route outside the lock (slow I/O); the goal never changes, so it stays valid.
-        player = await self._new_player(session, position, name)
-        async with self._store.lock(session_id):
-            session = await self._require_session(session_id)
-            if session.status is not SessionStatus.ACTIVE:
-                raise SessionFinished(session_id)
-            session.add_player(player)
-            await self._store.save(session)
-            view = self._view(session)
-        joined = next(p for p in view.players if p.id == player.id)
-        await self._hub.broadcast(session_id, message("player.joined", joined))
-        return JoinedSession(player_id=player.id, session=view)
+        return SessionCreated(player_id=player.id, session=self._view(session))
 
     async def update_position(self, session_id: str, player_id: str, position: LatLng) -> None:
         now = self._clock()
@@ -174,12 +156,6 @@ class GameService:
         async with self._store.lock(session_id):
             session = await self._require_session(session_id)
             self._require_player(session, player_id).last_seen_at = self._clock()
-
-    async def broadcast_presence(self, session_id: str, player_id: str, connected: bool) -> None:
-        await self._hub.broadcast(
-            session_id,
-            message("player.presence", {"player_id": player_id, "connected": connected}),
-        )
 
     async def purge_idle(self, older_than: datetime) -> int:
         return await self._store.purge_idle(older_than)
@@ -249,10 +225,7 @@ class GameService:
             winner_id=session.winner_id,
             created_at=session.created_at,
             finished_at=session.finished_at,
-            players=[
-                player_view(session, p, self._hub.is_connected(session.id, p.id))
-                for p in session.players.values()
-            ],
+            players=[player_view(session, p) for p in session.players.values()],
         )
 
     async def _require_session(self, session_id: str) -> GameSession:

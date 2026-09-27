@@ -1,12 +1,11 @@
 import { formatDistance, formatDuration } from "../geo";
 import type { SocketStatus } from "../net/gameSocket";
-import type { PlayerView, RouteView } from "../types/protocol";
+import type { RouteView } from "../types/protocol";
 import { h } from "./dom";
 
 export interface HudActions {
   onRecenter: () => void;
   onNewGame: () => void;
-  onInvite: () => void;
 }
 
 /** The game panel: distances, route info, connection state and players. */
@@ -16,7 +15,6 @@ export class Hud {
     "distance" | "remaining" | "eta" | "reroutes" | "source" | "connection" | "position",
     HTMLElement
   >;
-  private playerList: HTMLElement;
   private toastEl: HTMLElement;
   private toastTimer: number | undefined;
 
@@ -34,7 +32,6 @@ export class Hud {
     const row = (label: string, value: HTMLElement) =>
       h("div", { class: "row" }, h("span", { class: "label" }, label), value);
 
-    this.playerList = h("ul", { class: "players" });
     this.toastEl = h("div", { class: "toast", role: "status", "aria-live": "polite" });
 
     this.el = h(
@@ -47,12 +44,10 @@ export class Hud {
       row("Reroutes", this.fields.reroutes),
       row("Routing", this.fields.source),
       row("Position source", this.fields.position),
-      this.playerList,
       h(
         "div",
         { class: "hud-actions" },
         h("button", { class: "btn btn-small", onclick: actions.onRecenter, title: "Follow me" }, "🎯 Recenter"),
-        h("button", { class: "btn btn-small", onclick: actions.onInvite, title: "Copy invite link" }, "👥 Invite"),
         h("button", { class: "btn btn-small", onclick: actions.onNewGame }, "🔄 New game"),
       ),
     );
@@ -79,22 +74,6 @@ export class Hud {
   setConnection(status: SocketStatus): void {
     this.fields.connection.textContent = status;
     this.fields.connection.className = `conn conn--${status}`;
-  }
-
-  setPlayers(players: PlayerView[], selfId: string, winnerId: string | null): void {
-    this.playerList.replaceChildren(
-      ...(players.length > 1
-        ? players.map((p) =>
-            h(
-              "li",
-              { class: p.connected ? "" : "offline" },
-              p.id === winnerId ? "🏆 " : p.connected ? "🟢 " : "⚪ ",
-              p.id === selfId ? `${p.name} (you)` : p.name,
-              h("span", { class: "muted" }, ` · ${formatDistance(p.distance_to_goal_m)}`),
-            ),
-          )
-        : []),
-    );
   }
 
   toast(message: string, ms = 2500): void {

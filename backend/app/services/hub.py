@@ -39,15 +39,8 @@ class ConnectionHub:
             del self._rooms[session_id]
         return True
 
-    def is_connected(self, session_id: str, player_id: str) -> bool:
-        return player_id in self._rooms.get(session_id, {})
-
-    async def send(self, session_id: str, player_id: str, message: dict[str, Any]) -> None:
-        conn = self._rooms.get(session_id, {}).get(player_id)
-        if conn is not None:
-            await self._safe_send(conn, message)
-
     async def broadcast(self, session_id: str, message: dict[str, Any]) -> None:
+        """Send to every connection in the session (today: the one player)."""
         conns = list(self._rooms.get(session_id, {}).values())
         await asyncio.gather(*(self._safe_send(c, message) for c in conns))
 

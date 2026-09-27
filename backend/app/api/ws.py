@@ -11,8 +11,6 @@ server -> client
   player.moved     {player_id, position, distance_to_goal_m, remaining_route_m}
   route.updated    {player_id, reason, reroute_count, route}
   goal.reached     {player_id, name, elapsed_s, session}
-  player.joined    PlayerView
-  player.presence  {player_id, connected}
   pong
   error            {message}
 """
@@ -60,7 +58,6 @@ async def session_socket(
         # Same player opened the game somewhere else; the newest tab wins.
         with contextlib.suppress(Exception):
             await replaced.close(CLOSE_REPLACED, "connected from another tab")  # type: ignore[attr-defined]
-    await game.broadcast_presence(session_id, player_id, connected=True)
     await websocket.send_json(message("session.state", await game.get_view(session_id)))
 
     try:
@@ -82,8 +79,7 @@ async def session_socket(
     except (SessionNotFound, PlayerNotFound):
         await websocket.close(CLOSE_NOT_FOUND, "session expired")
     finally:
-        if hub.disconnect(session_id, player_id, websocket):
-            await game.broadcast_presence(session_id, player_id, connected=False)
+        hub.disconnect(session_id, player_id, websocket)
 
 
 def _describe(exc: ValidationError) -> str:

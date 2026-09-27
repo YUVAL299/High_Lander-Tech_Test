@@ -1,4 +1,4 @@
-import type { JoinedSession, LatLngPos, PublicConfig, SessionView } from "../types/protocol";
+import type { LatLngPos, PublicConfig, SessionCreated, SessionView } from "../types/protocol";
 
 export class ApiError extends Error {
   constructor(
@@ -31,13 +31,7 @@ export const api = {
   config: () => request<PublicConfig>("/api/config"),
 
   createSession: (position: LatLngPos, name?: string) =>
-    request<JoinedSession>("/api/sessions", {
-      method: "POST",
-      body: JSON.stringify({ position, name: name || null }),
-    }),
-
-  joinSession: (sessionId: string, position: LatLngPos, name?: string) =>
-    request<JoinedSession>(`/api/sessions/${encodeURIComponent(sessionId)}/players`, {
+    request<SessionCreated>("/api/sessions", {
       method: "POST",
       body: JSON.stringify({ position, name: name || null }),
     }),

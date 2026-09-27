@@ -1,7 +1,7 @@
 """End-to-end smoke test against a running stack (through nginx, like a browser).
 
-Plays a real two-player race over REST + WebSockets and checks that routing,
-rerouting and "first to the goal wins" all work.
+Plays a real game over REST + WebSockets and checks that routing, rerouting,
+goal detection and the end of the game all work.
 
     python e2e/smoke_test.py [http://localhost:8080]
 """
@@ -55,47 +55,40 @@ async def main() -> None:
         await wait_until_up(client)
         check((await client.get("/healthz")).status_code == 200, "frontend is healthy")
 
-        created = (await client.post("/api/sessions", json={"position": START, "name": "Alice"})).json()
+        created = (await client.post("/api/sessions", json={"position": START})).json()
         session = created["session"]
-        sid, alice = session["id"], created["player_id"]
+        sid, player = session["id"], created["player_id"]
         goal = session["goal"]
         route = session["players"][0]["route"]
         check(route["source"] == "osrm" and len(route["points"]) >= 2, "game starts with a route")
 
-        joined = await client.post(f"/api/sessions/{sid}/players", json={"position": START, "name": "Bob"})
-        check(joined.status_code == 201, "a second player can join")
-        bob = joined.json()["player_id"]
+        async with websockets.connect(f"{WS_BASE}/ws/sessions/{sid}?player_id={player}") as ws:
+            state = await next_of(ws, "session.state")
+            check(state["id"] == sid and state["status"] == "active", "WebSocket delivers the game state")
 
-        async with (
-            websockets.connect(f"{WS_BASE}/ws/sessions/{sid}?player_id={alice}") as ws_a,
-            websockets.connect(f"{WS_BASE}/ws/sessions/{sid}?player_id={bob}") as ws_b,
-        ):
-            state = await next_of(ws_a, "session.state")
-            check(len(state["players"]) == 2, "WebSocket delivers the session state")
-            await next_of(ws_b, "session.state")
-
-            # Alice walks far off her route: she should get a new one.
+            # Walk far off the route: a new route should arrive.
             off_route = {"lat": START["lat"] - 0.01, "lng": START["lng"] - 0.01}
-            await ws_a.send(json.dumps({"type": "position.update", "payload": off_route}))
-            moved = await next_of(ws_b, "player.moved")
-            check(moved["player_id"] == alice, "other players see you move")
-            rerouted = await next_of(ws_a, "route.updated")
+            await ws.send(json.dumps({"type": "position.update", "payload": off_route}))
+            moved = await next_of(ws, "player.moved")
+            check(moved["remaining_route_m"] > 0, "position updates are acknowledged")
+            rerouted = await next_of(ws, "route.updated")
             check(rerouted["reason"] == "off_route", "walking off the route triggers a reroute")
+            first = rerouted["route"]["points"][0]
+            check(
+                abs(first[0] - off_route["lat"]) < 1e-6 and abs(first[1] - off_route["lng"]) < 1e-6,
+                "the new route starts where the player is",
+            )
 
-            # Both arrive at the same moment: exactly one winner.
-            update = json.dumps({"type": "position.update", "payload": goal})
-            await asyncio.gather(ws_a.send(update), ws_b.send(update))
-            won_a = await next_of(ws_a, "goal.reached")
-            won_b = await next_of(ws_b, "goal.reached")
-            check(won_a["player_id"] == won_b["player_id"], "everyone agrees on the same winner")
+            await ws.send(json.dumps({"type": "position.update", "payload": goal}))
+            reached = await next_of(ws, "goal.reached")
+            check(reached["player_id"] == player, "reaching the goal is detected")
+
+            await ws.send(json.dumps({"type": "position.update", "payload": {"lat": 200, "lng": 0}}))
+            error = await next_of(ws, "error")
+            check("lat" in error["message"], "invalid input is rejected without dropping the socket")
 
         final = (await client.get(f"/api/sessions/{sid}")).json()
-        check(final["status"] == "finished", "the game is finished")
-        winners = [p for p in final["players"] if p["reached_goal_at"]]
-        check(len(winners) == 1 and final["winner_id"] == winners[0]["id"], "only one player won")
-
-        late = await client.post(f"/api/sessions/{sid}/players", json={"position": START})
-        check(late.status_code == 409, "nobody can join a finished game")
+        check(final["status"] == "finished" and final["winner_id"] == player, "the game is finished")
 
     print("All smoke checks passed.")
 

@@ -8,7 +8,7 @@ import { KeyboardControls } from "./position/keyboard";
 import { SimulatedSource } from "./position/simulated";
 import { PositionThrottle } from "./position/throttle";
 import type { PositionFix, PositionSource, PositionSourceKind } from "./position/types";
-import type { JoinedSession, LatLngPos, PlayerView, SessionView } from "./types/protocol";
+import type { LatLngPos, PlayerView, SessionCreated, SessionView } from "./types/protocol";
 import { DebugPanel } from "./ui/debugPanel";
 import { Hud } from "./ui/hud";
 import { showResult } from "./ui/resultBanner";
@@ -17,7 +17,6 @@ import { type StartChoice, StartScreen } from "./ui/startScreen";
 const STORAGE_KEY = "highlander.session";
 const DEFAULT_START: LatLngPos = { lat: 32.0853, lng: 34.7818 }; // Tel Aviv
 const WANDER_OFF_M = 60;
-const NAME_KEY = "highlander.name";
 
 interface SavedSession {
   sessionId: string;
@@ -59,29 +58,19 @@ export class GameApp {
 
   // ---- lifecycle -------------------------------------------------------------
 
-  protected showStartScreen(): void {
-    const joinId = new URLSearchParams(location.search).get("join");
+  private showStartScreen(): void {
     this.startScreen = new StartScreen(
-      {
-        joining: Boolean(joinId),
-        gpsSupported: GeolocationSource.isSupported(),
-        defaultName: safeStorage(() => localStorage.getItem(NAME_KEY)) ?? "",
-      },
-      (choice) => void this.start(choice, joinId),
+      { gpsSupported: GeolocationSource.isSupported() },
+      (choice) => void this.start(choice),
     );
-    const screen = this.startScreen;
-    screen.addAction("🎮 Simulate (no GPS needed)", () => {
-      void this.start({ name: screen.name, mode: "simulated" }, joinId);
-    });
-    this.root.append(screen.el);
+    this.root.append(this.startScreen.el);
   }
 
-  protected async start(choice: StartChoice, joinId: string | null, origin?: LatLngPos): Promise<void> {
+  private async start(choice: StartChoice): Promise<void> {
     const screen = this.startScreen!;
-    safeStorage(() => localStorage.setItem(NAME_KEY, choice.name));
     try {
-      let start = origin;
-      if (!start && choice.mode === "gps") {
+      let start: LatLngPos | undefined;
+      if (choice.mode === "gps") {
         screen.setBusy(true, "Getting your location…");
         try {
           start = await GeolocationSource.current();
@@ -93,11 +82,9 @@ export class GameApp {
         screen.setBusy(true, "Finding a starting point…");
         start = await this.simulatedStart();
       }
-      screen.setBusy(true, joinId ? "Joining the race…" : "Placing your goal and finding a route…");
-      const joined = joinId
-        ? await api.joinSession(joinId, start, choice.name)
-        : await api.createSession(start, choice.name);
-      this.enterGame(joined, choice.mode, start);
+      screen.setBusy(true, "Placing your goal and finding a route…");
+      const created = await api.createSession(start);
+      this.enterGame(created, choice.mode, start);
     } catch (err) {
       screen.showError(describeError(err));
     }
@@ -132,23 +119,22 @@ export class GameApp {
     }
   }
 
-  protected enterGame(joined: JoinedSession, mode: PositionSourceKind, origin: LatLngPos): void {
+  private enterGame(created: SessionCreated, mode: PositionSourceKind, origin: LatLngPos): void {
     this.startScreen?.remove();
     this.startScreen = null;
-    this.session = joined.session;
-    this.selfId = joined.player_id;
+    this.session = created.session;
+    this.selfId = created.player_id;
     this.selfPos = origin;
     this.resultShown = false;
     this.throttle.reset();
 
-    const saved: SavedSession = { sessionId: joined.session.id, playerId: joined.player_id, mode };
+    const saved: SavedSession = { sessionId: created.session.id, playerId: created.player_id, mode };
     safeStorage(() => sessionStorage.setItem(STORAGE_KEY, JSON.stringify(saved)));
-    history.replaceState(null, "", `?session=${encodeURIComponent(joined.session.id)}`);
+    history.replaceState(null, "", `?session=${encodeURIComponent(created.session.id)}`);
 
     this.hud = new Hud({
       onRecenter: () => this.map.recenter(),
       onNewGame: () => this.newGame(),
-      onInvite: () => void this.invite(),
     });
     this.root.append(this.hud.el);
     this.hud.setPositionSource(SOURCE_LABELS[mode]);
@@ -178,14 +164,14 @@ export class GameApp {
     });
 
     this.map.setSelf(this.selfId);
-    this.applyState(joined.session);
+    this.applyState(created.session);
     this.map.fitToGame();
 
-    this.connect(joined.session.id);
+    this.connect(created.session.id);
     this.useSource(createPositionSource(mode, origin));
   }
 
-  protected newGame(): void {
+  private newGame(): void {
     this.socket?.close();
     this.source?.stop();
     this.keyboard?.dispose();
@@ -206,7 +192,7 @@ export class GameApp {
 
   // ---- position handling -----------------------------------------------------
 
-  protected useSource(source: PositionSource): void {
+  private useSource(source: PositionSource): void {
     this.source?.stop();
     this.source = source;
     if (source instanceof SimulatedSource) {
@@ -224,11 +210,11 @@ export class GameApp {
     );
   }
 
-  protected onFix(fix: PositionFix): void {
+  private onFix(fix: PositionFix): void {
     this.selfPos = { lat: fix.lat, lng: fix.lng };
     this.lastKnown = this.selfPos;
     // Draw locally right away so movement feels instant; the server confirms.
-    this.map.upsertPlayer(this.selfId, this.selfName(), this.selfPos);
+    this.map.upsertPlayer(this.selfId, "You", this.selfPos);
     this.map.setAccuracy(this.selfPos, fix.accuracyM);
     if (this.session) {
       this.hud?.setDistances(haversineM(this.selfPos, this.session.goal), this.remainingFallback());
@@ -238,15 +224,7 @@ export class GameApp {
     }
   }
 
-  protected get currentPosition(): LatLngPos | null {
-    return this.selfPos;
-  }
-
-  protected get currentSession(): SessionView | null {
-    return this.session;
-  }
-
-  protected get selfPlayer(): PlayerView | undefined {
+  private get selfPlayer(): PlayerView | undefined {
     return this.session?.players.find((p) => p.id === this.selfId);
   }
 
@@ -335,6 +313,8 @@ export class GameApp {
 
     socket.on("session.state", (s) => this.applyState(s));
 
+    // Events carry a player_id. Today they're always about us; in multiplayer,
+    // other players' events would update their markers the same way.
     socket.on("player.moved", (m) => {
       const p = this.findPlayer(m.player_id);
       if (p) {
@@ -344,10 +324,7 @@ export class GameApp {
       }
       if (m.player_id === this.selfId) {
         this.hud?.setDistances(m.distance_to_goal_m, m.remaining_route_m);
-      } else {
-        this.map.upsertPlayer(m.player_id, p?.name ?? "Player", m.position);
       }
-      this.refreshPlayers();
     });
 
     socket.on("route.updated", (m) => {
@@ -371,22 +348,7 @@ export class GameApp {
       this.simulated()?.stopWalking();
       this.debug?.setWalking(false);
       this.applyState(m.session);
-      this.showResultOnce(m.player_id, m.name, m.elapsed_s);
-    });
-
-    socket.on("player.joined", (p) => {
-      if (!this.session || this.findPlayer(p.id)) return;
-      this.session.players.push(p);
-      this.map.upsertPlayer(p.id, p.name, p.position);
-      this.refreshPlayers();
-      this.hud?.toast(`👋 ${p.name} joined the race`);
-    });
-
-    socket.on("player.presence", (m) => {
-      const p = this.findPlayer(m.player_id);
-      if (p) p.connected = m.connected;
-      this.map.setPlayerConnected(m.player_id, m.connected);
-      this.refreshPlayers();
+      this.showResultOnce(m.elapsed_s);
     });
 
     socket.on("error", (m) => this.hud?.toast(`⚠️ ${m.message}`, 4000));
@@ -399,8 +361,7 @@ export class GameApp {
     for (const p of s.players) {
       // Our own marker follows local fixes; don't snap it back to a stale server copy.
       const pos = p.id === this.selfId && this.selfPos ? this.selfPos : p.position;
-      this.map.upsertPlayer(p.id, p.name, pos);
-      this.map.setPlayerConnected(p.id, p.connected || p.id === this.selfId);
+      this.map.upsertPlayer(p.id, p.id === this.selfId ? "You" : p.name, pos);
     }
     const me = this.selfPlayer;
     if (me?.route) {
@@ -408,46 +369,20 @@ export class GameApp {
       this.hud?.setRoute(me.route, me.reroute_count);
       this.hud?.setDistances(me.distance_to_goal_m, me.remaining_route_m);
     }
-    this.refreshPlayers();
-    if (s.status === "finished" && s.winner_id) {
-      const winner = this.findPlayer(s.winner_id);
+    if (s.status === "finished") {
       const elapsed = (Date.parse(s.finished_at ?? s.created_at) - Date.parse(s.created_at)) / 1000;
-      this.showResultOnce(s.winner_id, winner?.name ?? "Someone", elapsed);
+      this.showResultOnce(elapsed);
     }
   }
 
-  private showResultOnce(winnerId: string, winnerName: string, elapsedS: number): void {
+  private showResultOnce(elapsedS: number): void {
     if (this.resultShown) return;
     this.resultShown = true;
-    showResult({
-      won: winnerId === this.selfId,
-      winnerName,
-      elapsedS,
-      onNewGame: () => this.newGame(),
-    });
-  }
-
-  private refreshPlayers(): void {
-    if (this.session) this.hud?.setPlayers(this.session.players, this.selfId, this.session.winner_id);
-  }
-
-  private async invite(): Promise<void> {
-    if (!this.session) return;
-    const link = `${location.origin}${location.pathname}?join=${encodeURIComponent(this.session.id)}`;
-    try {
-      await navigator.clipboard.writeText(link);
-      this.hud?.toast("🔗 Invite link copied – open it in another tab or device");
-    } catch {
-      window.prompt("Share this link to race against someone:", link);
-    }
+    showResult({ elapsedS, onNewGame: () => this.newGame() });
   }
 
   private findPlayer(id: string): PlayerView | undefined {
     return this.session?.players.find((p) => p.id === id);
-  }
-
-  private selfName(): string {
-    return this.selfPlayer?.name ?? "You";
   }
 
   /** Until the server replies, estimate from the last known value. */

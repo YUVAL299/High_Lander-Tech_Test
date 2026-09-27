@@ -3,8 +3,11 @@
 A real-time, map-based navigation game. When you start, a goal flag appears
 somewhere 200–800 m away. The shortest **walking** route to it is drawn on an
 OpenStreetMap map, and you race to reach it. Walk off the path and the route
-is recalculated. Get within 20 m of the flag and you win. Invite a friend and
-the first one there wins.
+is recalculated. Get within 20 m of the flag and you win.
+
+This delivers **Part 1** of the assessment (the core single-player system).
+The design is ready for **Part 2** (multiplayer): see
+[Designed for multiplayer](docs/ARCHITECTURE.md#designed-for-multiplayer-part-2).
 
 ![stack](https://img.shields.io/badge/stack-FastAPI%20%C2%B7%20WebSockets%20%C2%B7%20Leaflet%20%C2%B7%20OSRM-blue)
 
@@ -45,7 +48,6 @@ check from a desk:
 | Dynamic rerouting             | **🔀 Wander off route** jumps 60 m sideways and a new route appears (counter +1) |
 | The whole game, hands-free    | **▶ Auto-walk route** follows the route to the flag (speed slider: 1–30 m/s)   |
 | Real GPS                      | Switch to **📍 GPS** at any time; your real position takes over                |
-| Multiplayer                   | **👥 Invite** copies a link; open it in another tab or browser and race        |
 | Resilience                    | Refresh the page (the game resumes); `docker compose restart frontend` drops the connection and the client reconnects on its own |
 
 Pressing a movement key or clicking the map while in GPS mode switches to
@@ -105,8 +107,8 @@ npm test && npm run typecheck
 ```
 
 No local toolchain? `make test` runs both test suites in Docker, and `make e2e`
-starts the whole stack with a stub router and plays a scripted two-player race
-against it.
+starts the whole stack with a stub router and plays a scripted game against
+it.
 
 ## Project layout
 
@@ -137,7 +139,7 @@ GitHub Actions (`.github/workflows/ci.yml`):
 2. **Frontend**: TypeScript typecheck, vitest, production build.
 3. **End-to-end**: builds the Docker images, starts the full Compose stack
    (with a stub OSRM so CI never depends on the internet) and plays a
-   two-player race through nginx.
+   scripted game through nginx.
 4. **Publish** (on `main`): pushes images to GHCR, tagged with the commit SHA.
 5. **Deploy to staging**: starts exactly those images and runs the smoke test
    against them. It uses an ephemeral runner by default; point it at a

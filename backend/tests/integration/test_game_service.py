@@ -4,9 +4,9 @@ import random
 import pytest
 
 from app.domain.geo import LatLng, destination_point, haversine_m
-from app.domain.models import RouteSource, SessionStatus, utcnow
+from app.domain.models import Player, RouteSource, SessionStatus, utcnow
 from app.domain.rules import ReroutePolicy
-from app.services.game_service import GameService, SessionFinished, SessionNotFound
+from app.services.game_service import GameService, SessionNotFound
 from app.services.goal_generator import GoalConfig, GoalGenerator
 from app.services.hub import ConnectionHub
 from app.services.routing_service import RoutingService
@@ -32,10 +32,15 @@ def hub():
 
 
 @pytest.fixture
-def game(provider, clock, hub):
+def store():
+    return InMemorySessionStore()
+
+
+@pytest.fixture
+def game(provider, clock, hub, store):
     routing = RoutingService(provider)
     return GameService(
-        store=InMemorySessionStore(),
+        store=store,
         hub=hub,
         routing=routing,
         goals=GoalGenerator(routing, GoalConfig(200, 800), random.Random(3)),
@@ -46,10 +51,10 @@ def game(provider, clock, hub):
 
 
 async def _start(game, hub):
-    joined = await game.create_session(START, "Alice")
+    created = await game.create_session(START, "Alice")
     conn = RecordingConnection()
-    hub.connect(joined.session.id, joined.player_id, conn)
-    return joined.session.id, joined.player_id, conn
+    hub.connect(created.session.id, created.player_id, conn)
+    return created.session.id, created.player_id, conn
 
 
 def _goal(view):
@@ -62,12 +67,12 @@ def _away_from_goal(goal):
 
 
 async def test_create_session_places_goal_and_route(game):
-    joined = await game.create_session(START, None)
-    s = joined.session
+    created = await game.create_session(START, None)
+    s = created.session
     assert s.status is SessionStatus.ACTIVE
     assert 200 <= haversine_m(START, _goal(s)) <= 800
     me = s.players[0]
-    assert me.id == joined.player_id
+    assert me.id == created.player_id
     assert me.name == "Player 1"
     assert me.route is not None and me.route.source is RouteSource.OSRM
 
@@ -126,35 +131,22 @@ async def test_reaching_goal_finishes_game(game, hub, clock, provider):
     assert len(provider.route_calls) == calls
 
 
-async def test_concurrent_arrivals_have_exactly_one_winner(game, hub):
+async def test_session_with_several_players_has_exactly_one_winner(game, hub, store):
+    """Multiplayer readiness: the service already handles a session holding
+    several players (added directly here, as there's no join endpoint yet)."""
     sid, alice, conn = await _start(game, hub)
-    goal = _goal(await game.get_view(sid))
-    bob = (await game.join_session(sid, START, "Bob")).player_id
-    carol = (await game.join_session(sid, START, "Carol")).player_id
+    session = await store.get(sid)
+    for pid in ("bob", "carol"):
+        session.add_player(Player(id=pid, name=pid, position=START))
+    goal = session.goal
 
-    await asyncio.gather(*(game.update_position(sid, p, goal) for p in (alice, bob, carol)))
+    await asyncio.gather(*(game.update_position(sid, p, goal) for p in (alice, "bob", "carol")))
 
     reached = conn.of_type("goal.reached")
     assert len(reached) == 1
     view = await game.get_view(sid)
     assert view.winner_id == reached[0]["payload"]["player_id"]
     assert sum(p.reached_goal_at is not None for p in view.players) == 1
-
-
-async def test_join_broadcasts_to_existing_players(game, hub):
-    sid, _, conn = await _start(game, hub)
-    joined = await game.join_session(sid, START, "Bob")
-    [event] = conn.of_type("player.joined")
-    assert event["payload"]["id"] == joined.player_id
-    assert event["payload"]["name"] == "Bob"
-    assert len(joined.session.players) == 2
-
-
-async def test_cannot_join_finished_game(game, hub):
-    sid, pid, _ = await _start(game, hub)
-    await game.update_position(sid, pid, _goal(await game.get_view(sid)))
-    with pytest.raises(SessionFinished):
-        await game.join_session(sid, START, "Late")
 
 
 async def test_unknown_session(game):

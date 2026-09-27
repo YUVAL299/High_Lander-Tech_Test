@@ -6,11 +6,12 @@ const TILE_URL = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
 const ATTRIBUTION =
   '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
-const OTHER_PLAYER_COLORS = ["#e8590c", "#7048e8", "#0ca678", "#d6336c", "#f59f00", "#1098ad"];
-
+/**
+ * Player markers are keyed by player id, matching the server protocol, so
+ * showing other players later (multiplayer) is just more entries in this map.
+ */
 interface PlayerLayer {
   marker: L.Marker;
-  color: string;
 }
 
 /** Owns the Leaflet map and everything drawn on it. Knows nothing about the network. */
@@ -23,7 +24,6 @@ export class MapView {
   private routeIsStraight = false;
   private accuracyCircle: L.Circle | null = null;
   private selfId: string | null = null;
-  private nextColor = 0;
   follow = true;
 
   constructor(container: HTMLElement, center: L.LatLngExpression, zoom = 16) {
@@ -63,27 +63,19 @@ export class MapView {
     const isSelf = id === this.selfId;
     let layer = this.players.get(id);
     if (!layer) {
-      const color = isSelf
-        ? "#1c7ed6"
-        : OTHER_PLAYER_COLORS[this.nextColor++ % OTHER_PLAYER_COLORS.length];
       const marker = L.marker(pos, {
         icon: L.divIcon({
           className: `ball ${isSelf ? "ball--self" : "ball--other"}`,
-          html: `<span style="background:${color}"></span>`,
+          html: "<span></span>",
           iconSize: [22, 22],
           iconAnchor: [11, 11],
         }),
         zIndexOffset: isSelf ? 1000 : 500,
         keyboard: false,
       })
-        .bindTooltip(isSelf ? `${name} (you)` : name, {
-          permanent: !isSelf,
-          direction: "top",
-          offset: [0, -12],
-          className: "player-label",
-        })
+        .bindTooltip(isSelf ? "You" : name, { direction: "top", offset: [0, -12] })
         .addTo(this.map);
-      layer = { marker, color };
+      layer = { marker };
       this.players.set(id, layer);
     } else {
       layer.marker.setLatLng(pos);
@@ -95,10 +87,6 @@ export class MapView {
       }
       if (this.follow) this.keepInView(pos);
     }
-  }
-
-  setPlayerConnected(id: string, connected: boolean): void {
-    this.players.get(id)?.marker.setOpacity(connected ? 1 : 0.4);
   }
 
   removePlayer(id: string): void {
@@ -169,7 +157,6 @@ export class MapView {
     this.goalCircle = null;
     this.routeLine = null;
     this.accuracyCircle = null;
-    this.nextColor = 0;
   }
 
   private keepInView(pos: LatLngPos): void {

@@ -64,7 +64,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r e2e/requirements.txt
-      - name: Play a two-player race against the running stack
+      - name: Play a scripted game against the running stack
         run: python e2e/smoke_test.py http://localhost:8080
       - name: Container logs
         if: failure()

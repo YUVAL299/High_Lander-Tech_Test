@@ -14,7 +14,7 @@
 └──────────────────────────────────────────┬───────────────────────────────────────────────┘
 ┌──────────────────────────────────────────▼───────────────────────────────────────────────┐
 │ FastAPI backend                                                                           │
-│   api/        REST (create / join / get session) · WebSocket endpoint · health           │
+│   api/        REST (create / get session) · WebSocket endpoint · health                  │
 │   services/   GameService ── GoalGenerator ── RoutingService (fallback) ── ConnectionHub  │
 │   domain/     geo math · GameSession state machine · ReroutePolicy   (pure, no I/O)       │
 │   routing/    RoutingProvider ◄── OsrmProvider                                            │
@@ -55,8 +55,6 @@
 | S → C     | `player.moved`    | `{player_id, position, distance_to_goal_m, remaining_route_m}` |
 | S → C     | `route.updated`   | `{player_id, reason, reroute_count, route}`                     |
 | S → C     | `goal.reached`    | `{player_id, name, elapsed_s, session}`                         |
-| S → C     | `player.joined`   | `PlayerView`                                                    |
-| S → C     | `player.presence` | `{player_id, connected}`                                        |
 | S → C     | `error`           | `{message}` (the socket stays open)                             |
 
 Server messages are defined in `backend/app/schemas.py` and mirrored in
@@ -68,8 +66,8 @@ Server messages are defined in `backend/app/schemas.py` and mirrored in
 **The server decides what happens.** The goal, the routes and "who reached
 the goal" are all computed on the backend. For a single player, detecting
 arrival in the browser would have been enough. But declaring a winner among
-several players has to happen in one place, and doing it on the server from
-the start meant multiplayer needed no redesign.
+several players has to happen in one place, so doing it on the server now
+means multiplayer won't need a redesign.
 
 **Location comes from the browser.** A container can't read the host's
 location services, but the browser can, through the Geolocation API. It
@@ -77,9 +75,8 @@ works on `localhost` without HTTPS. `SimulatedSource` implements the same
 `PositionSource` interface, so the rest of the app doesn't know or care which
 one is active.
 
-**A single-player game is just a session with one player.** Multiplayer
-reuses the same code: one more REST call to join, plus a broadcast to
-everyone in the session.
+**A game is a session that happens to have one player.** See
+[Designed for multiplayer](#designed-for-multiplayer-part-2) below.
 
 **Rerouting is throttled.** Asking OSRM for a route on every GPS tick would
 be wasteful and would make the route line flicker. `ReroutePolicy` only
@@ -93,17 +90,43 @@ network or 5xx errors, and no retry on real answers such as `NoRoute`.
 real router every 15 s. The game never gets stuck on "loading".
 
 **Concurrency.** Each session has an `asyncio.Lock`, and every
-read-modify-write happens under it, so simultaneous arrivals are processed
-one at a time. `GameSession.move_player` only assigns a winner while the
-session is still `ACTIVE`, so the first player to arrive wins and later
-arrivals can't change that. Routing calls happen outside the lock, so one
-player's reroute never delays another player's movement. A per-player
-"routing in flight" set prevents duplicate reroutes.
+read-modify-write happens under it, so updates are applied one at a time.
+`GameSession.move_player` only assigns a winner while the session is still
+`ACTIVE`, so the first arrival wins and later ones can't change that.
+Routing calls happen outside the lock, so a slow reroute never delays
+position updates. A per-player "routing in flight" set prevents duplicate
+reroutes.
 
 **The game rules are separate from I/O.** Everything in `domain/` is
 synchronous and has no dependencies, which makes it quick and thorough to
 unit test. Services handle orchestration; the API layer only translates
 between the wire format and service calls.
+
+## Designed for multiplayer (Part 2)
+
+Multiplayer isn't implemented, but the pieces it depends on are already in
+place and tested. Adding it is additive work: no redesign.
+
+| Already in place                                                            | Where                                        |
+| --------------------------------------------------------------------------- | -------------------------------------------- |
+| A session holds a *collection* of players, each with its own route          | `domain/models.py` (`GameSession.players`)   |
+| "First to reach the goal wins", and later arrivals can't change the winner   | `GameSession.move_player`; tested with simultaneous arrivals in `test_models.py` and `test_game_service.py` |
+| Updates to a session are serialised by a per-session lock                   | `SessionStore.lock`, used by `GameService`   |
+| Every server event names its `player_id` and goes to the whole session       | `ConnectionHub.broadcast`, `app/api/ws.py`   |
+| Client-side markers are keyed by player id                                  | `MapView.upsertPlayer`                       |
+| `GameSession.version` increments on every change (for optimistic locking)   | `domain/models.py`                           |
+
+What multiplayer would add:
+
+1. **Join**: `POST /api/sessions/{id}/players` → `GameService.join_session`
+   (route the newcomer to the existing goal, add them under the lock,
+   broadcast `player.joined`).
+2. **Presence**: broadcast `player.presence` when a socket connects or
+   disconnects (the hub already tracks sockets per player).
+3. **UI**: an invite link, a player list in the HUD, other players' markers
+   (handle `player.moved` for other ids), and a "X got there first" result.
+4. **Scaling**: move sessions and the hub to Redis (see below) once players of
+   one session may land on different backend replicas.
 
 ## Operations & production readiness
 
@@ -122,8 +145,7 @@ between the wire format and service calls.
   and a page refresh resumes the game (the session is kept in
   `sessionStorage`).
 - **Input validation**: Pydantic models on every REST body and WebSocket
-  message; player names are restricted to a safe set of characters, and the
-  UI only ever inserts text via `textContent`.
+  message; the UI only ever inserts text via `textContent`.
 
 ## Scaling out
 
@@ -147,7 +169,6 @@ state lives in Redis, WebSocket connections don't need sticky sessions.
 - Store sessions in Redis (above), so a backend restart doesn't end games.
 - Anti-cheat: reject impossible speeds between updates (when not in debug
   mode) and sign player tokens instead of using a bare `player_id`.
-- Lobby / countdown before a race starts, and several rounds per session.
 - Serve map tiles from a local tile server to remove the last external
   dependency.
 - Metrics (Prometheus): active sessions, update rate, OSRM latency and error

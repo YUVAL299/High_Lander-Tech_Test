@@ -19,7 +19,6 @@ export interface PlayerView {
   id: string;
   name: string;
   position: LatLngPos;
-  connected: boolean;
   distance_to_goal_m: number;
   remaining_route_m: number;
   reroute_count: number;
@@ -38,7 +37,7 @@ export interface SessionView {
   players: PlayerView[];
 }
 
-export interface JoinedSession {
+export interface SessionCreated {
   player_id: string;
   session: SessionView;
 }
@@ -65,8 +64,6 @@ export interface ServerMessages {
     route: RouteView;
   };
   "goal.reached": { player_id: string; name: string; elapsed_s: number; session: SessionView };
-  "player.joined": PlayerView;
-  "player.presence": { player_id: string; connected: boolean };
   pong: undefined;
   error: { message: string };
 }

@@ -35,11 +35,6 @@ class CreateSessionRequest(BaseModel):
     name: PlayerName | None = None
 
 
-class JoinSessionRequest(BaseModel):
-    position: Position
-    name: PlayerName | None = None
-
-
 class RouteView(BaseModel):
     points: list[tuple[float, float]]
     distance_m: float
@@ -60,7 +55,6 @@ class PlayerView(BaseModel):
     id: str
     name: str
     position: Position
-    connected: bool
     distance_to_goal_m: float
     remaining_route_m: float
     reroute_count: int
@@ -79,19 +73,18 @@ class SessionView(BaseModel):
     players: list[PlayerView]
 
 
-class JoinedSession(BaseModel):
-    """Returned when creating or joining: the session plus *your* player id."""
+class SessionCreated(BaseModel):
+    """The new session plus *your* player id (used to open the WebSocket)."""
 
     player_id: str
     session: SessionView
 
 
-def player_view(session: GameSession, player: Player, connected: bool) -> PlayerView:
+def player_view(session: GameSession, player: Player) -> PlayerView:
     return PlayerView(
         id=player.id,
         name=player.name,
         position=Position.from_domain(player.position),
-        connected=connected,
         distance_to_goal_m=round(session.distance_to_goal_m(player.id), 1),
         remaining_route_m=round(session.remaining_route_m(player.id), 1),
         reroute_count=player.reroute_count,
