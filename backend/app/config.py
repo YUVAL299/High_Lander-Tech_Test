@@ -13,6 +13,22 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     cors_origins: list[str] = Field(default_factory=lambda: ["*"])
 
+    # Routing (OSRM). The default is the free FOSSGIS walking instance;
+    # point it at http://osrm:5000 to use the local container instead.
+    osrm_url: str = "https://routing.openstreetmap.de/routed-foot"
+    osrm_profile: str = "foot"
+    osrm_timeout_s: float = 5.0
+    osrm_retries: int = 1
+
+    # Goal placement
+    goal_min_distance_m: float = 200.0
+    goal_max_distance_m: float = 800.0
+    goal_reach_radius_m: float = 20.0
+
+    # Rerouting
+    reroute_off_route_m: float = 25.0
+    reroute_min_interval_s: float = 3.0
+
 
 @lru_cache
 def get_settings() -> Settings:
