@@ -1,0 +1,147 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend – lint & tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/pyproject.toml
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: pytest -q
+
+  frontend:
+    name: Frontend – typecheck, tests & build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+  e2e:
+    name: End-to-end – Docker Compose stack
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    env:
+      COMPOSE: docker compose -f docker-compose.yml -f e2e/docker-compose.e2e.yml
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build images and start the stack
+        run: $COMPOSE up -d --build --wait
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r e2e/requirements.txt
+      - name: Play a two-player race against the running stack
+        run: python e2e/smoke_test.py http://localhost:8080
+      - name: Container logs
+        if: failure()
+        run: $COMPOSE logs
+      - if: always()
+        run: $COMPOSE down -v
+
+  publish:
+    name: Publish images to GHCR
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: [e2e]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Image names must be lowercase
+        run: echo "OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: backend
+          target: runtime
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/highlander-backend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/highlander-backend:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+      - uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          push: true
+          tags: |
+            ghcr.io/${{ env.OWNER }}/highlander-frontend:${{ github.sha }}
+            ghcr.io/${{ env.OWNER }}/highlander-frontend:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+
+  deploy-staging:
+    name: Deploy to staging & verify
+    needs: [publish]
+    # Runs on a GitHub-hosted runner, i.e. an ephemeral staging environment.
+    # For a persistent staging box, register it as a self-hosted runner with
+    # the "staging" label and change this to: runs-on: [self-hosted, staging]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: http://localhost:8080
+    permissions:
+      contents: read
+      packages: read
+    env:
+      IMAGE_TAG: ${{ github.sha }}
+      COMPOSE: docker compose -f docker-compose.yml -f deploy/docker-compose.staging.yml -f e2e/docker-compose.e2e.yml
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "IMAGE_OWNER=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_ENV"
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Deploy the exact images that passed CI
+        run: $COMPOSE up -d --no-build --wait
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r e2e/requirements.txt
+      - name: Smoke test staging
+        run: python e2e/smoke_test.py http://localhost:8080
+      - name: Container logs
+        if: failure()
+        run: $COMPOSE logs

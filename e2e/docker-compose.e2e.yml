@@ -1,0 +1,19 @@
+# Overlay for end-to-end tests: swaps the real OSRM for a deterministic stub
+# and shortens the reroute throttle so tests run fast.
+#
+#   docker compose -f docker-compose.yml -f e2e/docker-compose.e2e.yml up -d --build
+
+services:
+  stub-osrm:
+    image: python:3.12-slim
+    command: ["python", "/srv/server.py"]
+    volumes:
+      - ./e2e/stub-osrm/server.py:/srv/server.py:ro
+
+  backend:
+    environment:
+      HL_OSRM_URL: http://stub-osrm:5000
+      HL_REROUTE_MIN_INTERVAL_S: "0"
+    depends_on:
+      stub-osrm:
+        condition: service_started
