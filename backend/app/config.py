@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     reroute_off_route_m: float = 25.0
     reroute_min_interval_s: float = 3.0
 
+    # Housekeeping
+    session_ttl_s: float = 3600.0
+    session_sweep_interval_s: float = 60.0
+
 
 @lru_cache
 def get_settings() -> Settings:

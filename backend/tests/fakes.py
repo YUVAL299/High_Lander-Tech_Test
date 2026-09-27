@@ -33,3 +33,29 @@ class FakeRoutingProvider:
 
     async def aclose(self) -> None:
         pass
+
+
+class RecordingConnection:
+    """Stands in for a WebSocket and records everything sent to it."""
+
+    def __init__(self) -> None:
+        self.sent: list[dict] = []
+
+    async def send_json(self, data) -> None:
+        self.sent.append(data)
+
+    def of_type(self, type_: str) -> list[dict]:
+        return [m for m in self.sent if m["type"] == type_]
+
+
+class ManualClock:
+    def __init__(self, start) -> None:
+        self.now = start
+
+    def __call__(self):
+        return self.now
+
+    def advance(self, seconds: float) -> None:
+        from datetime import timedelta
+
+        self.now += timedelta(seconds=seconds)
