@@ -12,7 +12,13 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from app.domain.geo import LatLng, haversine_m, polyline_length_m, trim_polyline_from
+from app.domain.geo import (
+    LatLng,
+    haversine_m,
+    polyline_length_m,
+    project_onto_polyline,
+    trim_polyline_from,
+)
 
 
 def utcnow() -> datetime:
@@ -83,7 +89,9 @@ class GameSession:
         route = player.route
         if route is None or route.source is RouteSource.STRAIGHT_LINE:
             return haversine_m(player.position, self.goal)
-        return polyline_length_m(trim_polyline_from(player.position, route.points))
+        # Walk back onto the route, then along the rest of it.
+        onto_route = project_onto_polyline(player.position, route.points).distance_m
+        return onto_route + polyline_length_m(trim_polyline_from(player.position, route.points))
 
     def move_player(self, player_id: str, position: LatLng, now: datetime | None = None) -> bool:
         """Record a new position. Returns True if this move wins the game.

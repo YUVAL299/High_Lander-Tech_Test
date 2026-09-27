@@ -77,3 +77,14 @@ def test_remaining_route_follows_the_route_polyline():
 def test_remaining_route_without_real_route_is_direct_distance():
     s = _session("alice")
     assert s.remaining_route_m("alice") == s.distance_to_goal_m("alice")
+
+
+def test_remaining_route_includes_getting_back_onto_the_route():
+    from app.domain.models import Route, RouteSource
+
+    s = _session("alice")
+    end = destination_point(START, 90, 300)
+    s.players["alice"].route = Route([START, end], 300, 214, RouteSource.OSRM)
+    # 100 m along the route, then 40 m off to the side of it
+    s.move_player("alice", destination_point(destination_point(START, 90, 100), 0, 40))
+    assert round(s.remaining_route_m("alice")) == 240
