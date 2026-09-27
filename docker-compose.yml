@@ -1,0 +1,21 @@
+name: highlander
+
+services:
+  backend:
+    build:
+      context: ./backend
+      target: runtime
+    env_file:
+      - path: .env
+        required: false
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+    ports:
+      - "${HL_PORT:-8080}:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
