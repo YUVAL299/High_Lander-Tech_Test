@@ -128,24 +128,8 @@ frontend/                TypeScript + Leaflet single-page app, served by nginx
   src/map/, src/ui/      map layers, HUD, debug panel, start/result screens
 osrm/                    scripts for the optional local OSRM
 e2e/                     stub OSRM + end-to-end smoke test
-deploy/                  compose overlay that runs published images (staging)
 docs/ARCHITECTURE.md     design, decisions, scaling notes
-.github/workflows/ci.yml CI/CD: lint → test → build → e2e → publish → staging
 ```
-
-## CI/CD
-
-GitHub Actions (`.github/workflows/ci.yml`):
-
-1. **Backend**: ruff lint and format check, pytest.
-2. **Frontend**: TypeScript typecheck, vitest, production build.
-3. **End-to-end**: builds the Docker images, starts the full Compose stack
-   (with a stub OSRM so CI never depends on the internet) and plays a
-   scripted game through nginx.
-4. **Publish** (on `main`): pushes images to GHCR, tagged with the commit SHA.
-5. **Deploy to staging**: starts exactly those images and runs the smoke test
-   against them. It uses an ephemeral runner by default; point it at a
-   self-hosted runner for a persistent staging box.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the design and the
 reasoning behind it.
